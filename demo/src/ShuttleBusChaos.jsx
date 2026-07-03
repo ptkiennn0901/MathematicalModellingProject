@@ -11,18 +11,18 @@ import { Play, Pause, RotateCcw, ChevronRight, Bus, Info } from "lucide-react";
 
 // ----- palette -----
 const C = {
-  bg: "#0E1116",
-  panel: "#151A21",
-  panel2: "#11161C",
-  border: "#232B36",
-  grid: "#1E2530",
-  text: "#E6EDF3",
-  muted: "#8B98A8",
-  amber: "#F5A524",
-  teal: "#2DD4BF",
-  rose: "#FB7185",
+  bg: "#F5F7FA",
+  panel: "#FFFFFF",
+  panel2: "#EEF2F7",
+  border: "#D6DEE8",
+  grid: "#E2E8F0",
+  text: "#1B2430",
+  muted: "#5C6775",
+  amber: "#D97706",
+  teal: "#0D9488",
+  rose: "#E11D48",
 };
-const BUS = ["#F5A524", "#38BDF8", "#A78BFA", "#34D399"];
+const BUS = ["#D97706", "#0284C7", "#7C3AED", "#059669"];
 
 // ----- simulation core -----
 
@@ -180,7 +180,7 @@ export default function ShuttleBusChaos() {
       ctx.fillText(String(vy), 8, Y(vy) + 3);
     }
     // points
-    ctx.fillStyle = "rgba(230,237,243,0.55)";
+    ctx.fillStyle = "rgba(27,36,48,0.55)";
     for (const [g, v] of bifData) {
       if (v > hMax) continue;
       ctx.fillRect(X(g), Y(v), 1, 1);
@@ -213,7 +213,7 @@ export default function ShuttleBusChaos() {
     ctx.strokeStyle = C.grid;
     ctx.strokeRect(pad, pad, w - 2 * pad, h - 2 * pad);
     // diagonal
-    ctx.strokeStyle = "#384150"; ctx.lineWidth = 1;
+    ctx.strokeStyle = "#B8C2CE"; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(X(0), Y(0)); ctx.lineTo(X(maxH), Y(maxH)); ctx.stroke();
     // points
     const hs = live.hs0;
@@ -291,7 +291,7 @@ export default function ShuttleBusChaos() {
       // the ring
       ctx.strokeStyle = C.border; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(cx, cy, R, 0, 7); ctx.stroke();
-      ctx.strokeStyle = "#2A323D"; ctx.setLineDash([6, 8]); ctx.lineWidth = 1;
+      ctx.strokeStyle = "#B8C2CE"; ctx.setLineDash([6, 8]); ctx.lineWidth = 1;
       ctx.beginPath(); ctx.arc(cx, cy, R, 0, 7); ctx.stroke(); ctx.setLineDash([]);
       // terminals (station markers on the ring)
       const term = (a, label) => {
