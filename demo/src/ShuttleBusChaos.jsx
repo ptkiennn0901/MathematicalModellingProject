@@ -279,27 +279,36 @@ export default function ShuttleBusChaos() {
     const drawRoute = () => {
       const { ctx, w, h } = fitCanvas(cv);
       ctx.clearRect(0, 0, w, h);
-      const padX = 70;
-      const oy = h * 0.5;
-      const x0 = padX, x1 = w - padX;
-      // terminals
+      // circular loop geometry: ORIGIN at top, DESTINATION at bottom (opposite points)
+      const cx = w / 2, cy = h / 2;
+      const R = Math.min(w, h) / 2 - 42;
+      const A0 = -Math.PI / 2;               // ORIGIN angle (top)
+      const A1 = Math.PI / 2;                // DESTINATION angle (bottom)
+      // angle for a fraction f of the loop, travelling clockwise from ORIGIN
+      const ang = (f) => A0 + f * 2 * Math.PI;
+      const ptOnRing = (a, r) => [cx + Math.cos(a) * r, cy + Math.sin(a) * r];
+
+      // the ring
       ctx.strokeStyle = C.border; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(x0, oy); ctx.lineTo(x1, oy); ctx.stroke();
-      // dashes
+      ctx.beginPath(); ctx.arc(cx, cy, R, 0, 7); ctx.stroke();
       ctx.strokeStyle = "#2A323D"; ctx.setLineDash([6, 8]); ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(x0, oy); ctx.lineTo(x1, oy); ctx.stroke(); ctx.setLineDash([]);
-      const term = (x, label) => {
+      ctx.beginPath(); ctx.arc(cx, cy, R, 0, 7); ctx.stroke(); ctx.setLineDash([]);
+      // terminals (station markers on the ring)
+      const term = (a, label) => {
+        const [x, y] = ptOnRing(a, R);
         ctx.fillStyle = C.panel2; ctx.strokeStyle = C.border; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(x, oy, 9, 0, 7); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.arc(x, y, 9, 0, 7); ctx.fill(); ctx.stroke();
         ctx.fillStyle = C.muted; ctx.font = "11px ui-sans-serif, system-ui";
-        ctx.textAlign = "center"; ctx.fillText(label, x, oy - 22); ctx.textAlign = "left";
+        ctx.textAlign = "center";
+        ctx.fillText(label, x, y + (a === A0 ? -18 : 24));
+        ctx.textAlign = "left";
       };
-      term(x0, "ORIGIN"); term(x1, "DESTINATION");
+      term(A0, "ORIGIN"); term(A1, "DESTINATION");
 
       if (!live.ok) {
         ctx.fillStyle = C.rose; ctx.font = "13px ui-monospace, monospace";
         ctx.textAlign = "center";
-        ctx.fillText("Schedule diverged — lower Γ or raise speedup", w / 2, oy + 40);
+        ctx.fillText("Schedule diverged — lower Γ or raise speedup", cx, cy);
         ctx.textAlign = "left";
         return;
       }
@@ -311,33 +320,53 @@ export default function ShuttleBusChaos() {
         const m = binSeg(arr, t);
         const seg = arr[m];
         const H = seg.H;
-        const load = gamma * H;
-        const travel = 1 / (1 + S[b] * H);
+        const load = gamma * H;                 // boarding dwell at origin
+        const travel = 1 / (1 + S[b] * H);      // total driving budget for the loop
+        const unload = 0.25 * travel;           // alighting dwell at destination (carved from travel)
+        const driveHalf = (travel - unload) / 2;
         const local = t - seg.t;
-        let xf, state, dir = "";
-        if (local < load) { xf = 0; state = "Boarding"; }
-        else {
-          const f = Math.min(1, (local - load) / travel);
-          xf = f <= 0.5 ? f * 2 : (1 - f) * 2;
-          state = "En route"; dir = f <= 0.5 ? "→" : "←";
+
+        // phases within the segment: board@origin → drive → unload@dest → drive → (next origin)
+        let f, state, dir = "", stopA = null, stopProg = 0;
+        if (local < load) {
+          f = 0; state = "Boarding"; stopA = A0;
+          stopProg = Math.min(1, local / Math.max(load, 1e-6));
+        } else if (local < load + driveHalf) {
+          f = ((local - load) / driveHalf) * 0.5;              // origin → destination
+          state = "En route"; dir = "→ dest";
+        } else if (local < load + driveHalf + unload) {
+          f = 0.5; state = "Unloading"; stopA = A1;
+          stopProg = Math.min(1, (local - load - driveHalf) / Math.max(unload, 1e-6));
+        } else {
+          f = 0.5 + ((local - load - driveHalf - unload) / driveHalf) * 0.5; // destination → origin
+          state = "En route"; dir = "→ origin";
         }
-        const px = x0 + xf * (x1 - x0);
-        // lane offset so buses don't fully overlap
-        const lane = oy + (b - (live.perBus.length - 1) / 2) * 16;
-        // boarding queue at origin
-        if (state === "Boarding") {
+        const a = ang(f);
+        // lane offset so buses ride on slightly different radii (no full overlap)
+        const rLane = R + (b - (live.perBus.length - 1) / 2) * 15;
+        const [px, py] = ptOnRing(a, rLane);
+        // passenger queue at the current stop (boarding at origin / alighting at destination)
+        if (stopA !== null) {
+          const [sx, sy] = ptOnRing(stopA, rLane);
           const q = Math.min(10, Math.round(H * 6));
+          const off = stopA === A0 ? -20 : 12; // stack above origin, below destination
           ctx.fillStyle = "rgba(139,152,168,0.7)";
-          for (let k = 0; k < q; k++) ctx.fillRect(x0 - 16 - (k % 5) * 4, lane - 8 + Math.floor(k / 5) * 5, 3, 3);
+          for (let k = 0; k < q; k++)
+            ctx.fillRect(sx - 6 + (k % 5) * 4, sy + off - Math.floor(k / 5) * 5, 3, 3);
         }
-        // bus glyph
+        // bus glyph — rotated to follow the ring tangent
+        ctx.save();
+        ctx.translate(px, py);
+        ctx.rotate(a + Math.PI / 2);
         ctx.fillStyle = BUS[b % BUS.length];
-        roundRect(ctx, px - 11, lane - 7, 22, 14, 4); ctx.fill();
+        roundRect(ctx, -11, -7, 22, 14, 4); ctx.fill();
         ctx.fillStyle = "rgba(0,0,0,0.35)";
-        ctx.fillRect(px - 7, lane - 4, 5, 4); ctx.fillRect(px + 1, lane - 4, 5, 4);
-        if (state === "Boarding") {
+        ctx.fillRect(-7, -4, 5, 4); ctx.fillRect(1, -4, 5, 4);
+        ctx.restore();
+        // dwell progress ring while stopped
+        if (stopA !== null) {
           ctx.strokeStyle = BUS[b % BUS.length]; ctx.lineWidth = 2; ctx.globalAlpha = 0.5;
-          ctx.beginPath(); ctx.arc(px, lane, 14, 0, 7 * Math.min(1, local / Math.max(load, 1e-6)));
+          ctx.beginPath(); ctx.arc(px, py, 14, 0, 7 * stopProg);
           ctx.stroke(); ctx.globalAlpha = 1;
         }
         board.push({ b, state, dir, H });
@@ -461,8 +490,8 @@ export default function ShuttleBusChaos() {
 
         {/* right: route + plots */}
         <div className="lg:col-span-2 space-y-4">
-          <Panel title="Route — buses board, drive, and overtake">
-            <canvas ref={routeRef} style={{ width: "100%", height: 200, display: "block" }} />
+          <Panel title="Loop route — buses circle from origin to destination and overtake">
+            <canvas ref={routeRef} style={{ width: "100%", height: 320, display: "block" }} />
           </Panel>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
